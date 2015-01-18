@@ -1,13 +1,8 @@
----
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
----
+# Reproducible Research: Peer Assessment 1
 
 
 
-Last updated on Sun Jan 18 14:06:03 2015 by Sarah Huang
+Last updated on Sun Jan 18 14:21:03 2015 by Sarah Huang
 
 ***
 
