@@ -1,0 +1,282 @@
+---
+title: "Impact of severe weather events on population health and economic damages"
+output:
+  html_document:
+    keep_md: true
+---
+
+```{r global_options, echo=FALSE, message=FALSE}
+require(knitr)
+opts_chunk$set(fig.width=8, fig.height=6)
+```
+
+Updated on `r date()` by Sarah Huang
+
+## Synopsis
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. The original data is processed so it is tidy for analysis. Two questions are investigated and answered: First, across the United States, which types of events are most harmful with respect to population health? Second, across the United States, which types of events have the greatest economic consequences? For the first question, we address the population health by examining the data on fatalities and injuries. For the second question, we address the economic consequences by using the data on property damage and crop damage. Summary data and figures are presented at the end of this document.
+
+## Data Processing 
+
+Load the data
+
+```{r load_data, cache=TRUE, eval=FALSE}
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", "stormData.csv.bz2")
+```
+
+```{r cache = TRUE}
+stormData <- read.csv("stormData.csv.bz2")
+```
+
+Here are the variables in the dataset.
+
+```{r}
+names(stormData)
+```
+
+Subset the data. Select only the variables necessary to conduct the analysis. The necessary variables are: EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP.
+
+```{r}
+stormData <- subset(stormData, select = c(8, 23:28))
+head(stormData) #a rough look at the subsetted data
+str(stormData) #a look at the data structure
+```
+
+Remove rows coded as "Summary", "?", "month" or "year" in variable EVTYPE.
+
+```{r}
+stormData <- stormData[!grepl("summary|year|month|county|southeast|other|none|^high$|\\?", stormData$EVTYPE, ignore.case = TRUE),]
+```
+
+Replace values of PROPDMGEXP with appropriate exponent. Rules: replace K with 3, M and m with 6, H and h with 2, B with 9, + and - with 0, ? with NA. There are also empty cells that correspond to zero damage so it is appropriate to replace these empty cells with 0. Change the variable from factor to numeric.
+
+```{r}
+stormData$PROPDMGEXP <- gsub("K", 3, stormData$PROPDMGEXP)
+stormData$PROPDMGEXP <- gsub("M", 6, stormData$PROPDMGEXP, ignore.case = TRUE)
+stormData$PROPDMGEXP <- gsub("H", 2, stormData$PROPDMGEXP, ignore.case = TRUE)
+stormData$PROPDMGEXP <- gsub("B", 9, stormData$PROPDMGEXP)
+stormData$PROPDMGEXP <- gsub("+", 0, stormData$PROPDMGEXP, fixed = TRUE)
+stormData$PROPDMGEXP <- gsub("-", 0, stormData$PROPDMGEXP, fixed = TRUE)
+stormData$PROPDMGEXP <- gsub("?", NA, stormData$PROPDMGEXP, fixed = TRUE)
+stormData$PROPDMGEXP[stormData$PROPDMGEXP==""] <- 0 
+stormData$PROPDMGEXP <- as.numeric(stormData$PROPDMGEXP)
+```
+
+Replace values of CROPDMGEXP with appropriate exponent. Rules: replace K and k with 3, M and m with 6, B with 9, ? with NA, all empty cells with 0. Change the variable from factor to numeric.
+
+```{r}
+stormData$CROPDMGEXP <- gsub("K", 3, stormData$CROPDMGEXP, ignore.case = TRUE)
+stormData$CROPDMGEXP <- gsub("M", 6, stormData$CROPDMGEXP, ignore.case = TRUE)
+stormData$CROPDMGEXP <- gsub("B", 9, stormData$CROPDMGEXP)
+stormData$CROPDMGEXP <- gsub("?", NA, stormData$CROPDMGEXP, fixed = TRUE)
+stormData$CROPDMGEXP[stormData$CROPDMGEXP==""] <- 0
+stormData$CROPDMGEXP <- as.numeric(stormData$CROPDMGEXP)
+```
+
+Next, we need to tidy variable EVTYPE. This variable contains the names of the weather events and in many cases, there are entries of the same event that are worded differently. You can see this by calling the unique() function on EVTYPE. We will rename these entries of the same event with the same descriptive name. 
+
+First, creat a new dataset with variables EVTYPE and EVENT. The values of EVTYPE are the unique values of the same variable in stormData dataset. The variable EVENT stores modified descriptive names of EVTYPE.
+
+```{r}
+EVTYPE <- sort(unique(stormData$EVTYPE))
+EVENT <- EVTYPE #initial value, to be modified later
+type <- data.frame(EVTYPE, EVENT)
+head(type)
+```
+
+```{r}
+type$EVENT <- gsub("[[:punct:]]$", "", type$EVENT) #remove tailing punctuation
+type$EVENT <- gsub("/|\\\\|,|&|-|[[:punct:]]", " ", type$EVENT)
+type$EVENT <- tolower(type$EVENT)
+type$EVENT <- gsub("advisor[a-z]*|damage|pattern|spell|conditions|very|patchy|normal|prolong|prolonged|early|bitter|effects|gradient", "", type$EVENT)
+type$EVENT <- gsub("winds|wins|w inds|wnd|windss|wind gust[a-z]*", "wind", type$EVENT)
+type$EVENT <- gsub("storms|tsorm|strom", "storm", type$EVENT)
+type$EVENT <- gsub("fldg|fld|flooding|floooding|floods|floodin", "flood", type$EVENT)
+type$EVENT <- gsub("torndao|tornado[a-z].*", "tornado", type$EVENT)
+type$EVENT <- gsub("tstm|thu[a-z]+torm", "thunderstorm", type$EVENT)
+type$EVENT <- gsub("tunder", "thunder", type$EVENT)
+type$EVENT <- gsub("snowfall", "snow", type$EVENT)
+type$EVENT <- gsub("rainfall|rains|shower|showers", "rain", type$EVENT)
+type$EVENT <- gsub("currents", "current", type$EVENT)
+type$EVENT <- gsub("slides", "slide", type$EVENT)
+type$EVENT <- gsub("mishap", "accident", type$EVENT)
+type$EVENT <- gsub(" and ", " ", type$EVENT)
+type$EVENT <- gsub("avalance", "avalanche ", type$EVENT)
+type$EVENT <- gsub("dryness", "dry", type$EVENT)
+type$EVENT <- gsub("cool|low temp|hyp[a-z]+thermia.*|^cold.*", "cold", type$EVENT)
+type$EVENT <- gsub("abnormal|abnormally|unseasonably|unseasonal|unusual|unusually|unseasonable|ably|^ab", "", type$EVENT)
+type$EVENT <- gsub("excessive heat|extreme heat|heat wave$|heat waves$|heatburst|high temperature|hot|warm|warmth|heats", "heat", type$EVENT)
+type$EVENT <- gsub("wa.*spout|waterspouts|waterspout funnel cloud", "waterspout", type$EVENT)
+type$EVENT <- gsub("tides", "tide", type$EVENT)
+type$EVENT <- gsub("[a-z][0-9]+.*|[0-9]+.*", "", type$EVENT)
+type$EVENT <- gsub("^ *|(?<= ) | *$", "", type$EVENT, perl=TRUE) #remove excess spaces
+```
+
+```{r}
+type[grep("thunderstorm|thundersnow", type$EVENT), 2] <- "thunderstorm"
+type[grep("lightning|lighting|ligntning", type$EVENT), 2] <- "lightning"
+type[grep("hurricane|typhoon|floyd", type$EVENT), 2] <- "hurricane/typhoon"
+type[grep("volcanic|vog", type$EVENT), 2] <- "volcanic ash"
+type[grep("tornado|waterspout|landspout", type$EVENT), 2] <- "tornado/waterspout"
+type[grep("flood|urban small|small stream|coastal surge", type$EVENT), 2] <- "flood/coastal flood"
+type[grep("cloud|funnels|funnel", type$EVENT), 2] <- "funnel cloud"
+type[grep("hail", type$EVENT), 2] <- "hail"
+type[grep("fire|fires", type$EVENT), 2] <- "wirefire"
+type[grep("tropical storm", type$EVENT), 2] <- "tropical storm"
+type[grep("wint.*mix", type$EVENT), 2] <- "winter weather"
+type[grep("win.*storm", type$EVENT), 2] <- "winter storm"
+type[grep("microburst|micoburst|mircoburst|downburst", type$EVENT), 2] <- "microburst/downburst"
+type[grep("sleet", type$EVENT), 2] <- "sleet"
+type[grep("snow", type$EVENT), 2] <- "snow/heavy snow"
+type[grep("coastal.*storm|storm surge|rough seas", type$EVENT), 2] <- "coastal storm"
+type[grep("slide|slump", type$EVENT), 2] <- "landslide"
+type[grep("blizzard", type$EVENT), 2] <- "blizzard"
+type[grep("frost|freez", type$EVENT), 2] <- "frost/freeze"
+type[grep("surf|high tides|high tide|rip current|high seas|high waves|high water|rogue wave|rising water|heavy seas|high swells|heavy swells", type$EVENT), 2] <- "high surf/high wave/rip current"
+type[grep("eros", type$EVENT), 2] <- "coastal erosion"
+type[grep("dust devel|dust devil|gustnado", type$EVENT), 2] <- "whirlwind"
+type[grep("dust", type$EVENT), 2] <- "dust/duststorm"
+type[grep("smoke", type$EVENT), 2] <- "dense smoke"
+type[grep("fog", type$EVENT), 2] <- "dense fog"
+type[grep("ice|icy", type$EVENT), 2] <- "ice/icestorm"
+type[grep("drought|record low rain|below precipitation|dry weather|mild dry|record dry|excessively dry|^dry$", type$EVENT), 2] <- "drought/dry weather"
+type[grep("rain|wet|record precipitation", type$EVENT), 2] <- "rain/heavy rain/wet weather"
+type[grep("wind.*chill|record cold|severe cold|record low|colderature|extended cold|excessive cold|extreme cold|^cold", type$EVENT), 2] <- "cold/windchill"
+type[grep("heat|temperature record|record temperature|record high", type$EVENT), 2] <- "heat"
+type[grep("high wind|gusty.*wind|^wind|strong wind|wake low wind|force wind|metro storm", type$EVENT), 2] <- "strong wind/high wind"
+type[grep("precip", type$EVENT), 2] <- "mix precipitation"
+type[grep("southeast|red flag criteria|northern lights|none|no severe|non severe|mild|glaze|heavy mix|^dam|excessive$|^high$|drowning|marine accident", type$EVENT), 2] <- "other"
+```
+
+Merge the new events description file "type" with the storm dataset "stormData".
+
+```{r}
+stormData <- merge(stormData, type, by="EVTYPE", all=TRUE)
+stormData$EVTYPE <- as.factor(stormData$EVENT)
+stormData$EVENT <- NULL
+head(stormData)
+```
+
+Add a variable "TOTALCASUALTY", total of "FATALITIES" and "INJURIES".
+
+```{r}
+stormData$TOTALCASUALTY <- stormData$FATALITIES + stormData$INJURIES
+```
+
+Add a variable "TOTALDAMAGE", total amount of property damage and crop damage.
+
+```{r}
+stormData$TOTALDAMAGE <- stormData$PROPDMG * (10 ^ stormData$PROPDMGEXP) + stormData$CROPDMG * (10 ^ stormData$CROPDMGEXP)
+head(stormData)
+```
+
+## Results
+
+Calculate 
+1. Total number of fatalities and injuries per weather event. 
+2. Average total number of fatalities and injuries per occurance of each event.
+3. Total economic damage of properties and crops per weather event.
+4. Average total economic damage of properties and crops per occurance of each event.
+
+```{r}
+totalCasualty <- aggregate(TOTALCASUALTY ~ EVTYPE, data = stormData, FUN= "sum")
+averageCasualty <- aggregate(TOTALCASUALTY ~ EVTYPE, data = stormData, FUN= "mean")
+totalDamage <- aggregate(TOTALDAMAGE ~ EVTYPE, data = stormData, FUN= "sum")
+averageDamage <- aggregate(TOTALDAMAGE ~ EVTYPE, data = stormData, FUN= "mean")
+```
+
+Next, we will plot the above caculations. 
+
+For the ease of plotting, create an event label file "eventLabel" in which each event is assigned a number. Only the event number will be shown in plots and the actual event name can be found in "eventLabel".
+
+```{r}
+EVENTLABEL <- paste("E", 1:length(totalCasualty$EVTYPE), sep="")
+EVTYPE <- totalCasualty$EVTYPE
+eventLabel <- data.frame(EVTYPE, EVENTLABEL)
+eventLabel
+```
+
+Add the event label to the plotting data.
+
+```{r}
+totalCasualty$EVENTLABEL <- eventLabel$EVENTLABEL
+averageCasualty$EVENTLABEL <- eventLabel$EVENTLABEL
+totalDamage$EVENTLABEL <- eventLabel$EVENTLABEL
+averageDamage$EVENTLABEL <- eventLabel$EVENTLABEL
+```
+
+Figure 1: Total casualties across all years recorded vs. average total casualties per occurance.
+
+```{r}
+par(mfrow = c(1, 2), cex = 0.8, bg = "transparent")
+with(totalCasualty, {
+  barplot(TOTALCASUALTY,
+          names.arg = EVENTLABEL, 
+          space = 1,
+          ylab = "Total Casualties", 
+          xlab = "Weather Event",
+          ylim = c(0, 1e+05), 
+          main = "",
+          col = "red")
+  box()
+})
+
+with(averageCasualty, {
+  barplot(TOTALCASUALTY,
+          names.arg = EVENTLABEL, 
+          space = 1,
+          ylab = "Average Casualties", 
+          xlab = "Weather Event",
+          ylim = c(0, 10), 
+          main = "",
+          col = "red")
+  box()
+})
+```  
+
+Figure 2: Total damage across all years recorded vs. average total damage per occurance.
+
+```{r}
+par(mfrow = c(1, 2), cex = 0.8, bg = "transparent")
+with(totalDamage, {
+  barplot(TOTALDAMAGE,
+          names.arg = EVENTLABEL, 
+          space = 1,
+          ylab = "Total Damage", 
+          xlab = "Weather Event",
+          ylim = c(0, 2e+11), 
+          main = "",
+          col = "red")
+  box()
+})
+
+with(averageDamage, {
+  barplot(TOTALDAMAGE,
+          names.arg = EVENTLABEL, 
+          space = 1,
+          ylab = "Average Damage", 
+          xlab = "Weather Event",
+          ylim = c(0, 3.2e+08), 
+          main = "",
+          col = "red")
+  box()
+})
+```
+
+Besides the figures above, let's look at the top 3 events that have the greatest number of total casualties and the top 3 events that have the greatest average total casualties per occurance.
+
+```{r}
+head(totalCasualty[with(totalCasualty, order(-TOTALCASUALTY)), ], 3)
+head(averageCasualty[with(totalCasualty, order(-TOTALCASUALTY)), ], 3)
+```
+
+Answer to the first question: Undoubtly, the most harmful type of event to population health is tornado/waterspout either you look at the total casualties or the average total casualties per occurance.
+
+Next, we look at the top 3 events which incur the greatest total damage and the top 3 events which incur the greatest average total damage per occurance.
+
+```{r}
+head(totalDamage[with(totalDamage, order(-TOTALDAMAGE)), ], 3)
+head(averageDamage[with(totalDamage, order(-TOTALDAMAGE)), ], 3)
+```
+
+Answer to the second question: We might draw different conclusion depending on how we look at this. If we mostly care about the total damage over time, then the type of event causing the greatest economic consequence is flood/coastal flood, all sorts of flood related events. However, if we mostly care about the damage per occurance, then hurricane/typhoon is the most damaging to the economic aspect. 
